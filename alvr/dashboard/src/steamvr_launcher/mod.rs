@@ -27,6 +27,8 @@ use sysinfo::{ProcessesToUpdate, System};
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 const DRIVER_KEY: &str = "driver_alvr_server";
 const BLOCKED_KEY: &str = "blocked_by_safe_mode";
+const STEAMVR_KEY: &str = "steamvr";
+const HOME_APP_KEY: &str = "enableHomeApp";
 
 pub fn is_steamvr_running() -> bool {
     System::new_all()
@@ -65,23 +67,24 @@ pub fn maybe_kill_steamvr() {
     }
 }
 
-fn unblock_alvr_driver() -> Result<()> {
+fn prepare_steamvr_settings() -> Result<()> {
     if !cfg!(target_os = "linux") {
         return Ok(());
     }
 
     let path = alvr_server_io::steamvr_settings_file_path()?;
     let text = fs::read_to_string(&path).with_context(|| format!("Failed to read {path:?}"))?;
-    let new_text = unblock_alvr_driver_within_vrsettings(text.as_str())
+    let new_text = prepare_vrsettings_for_launch(text.as_str())
         .with_context(|| "Failed to rewrite .vrsettings.")?;
     fs::write(&path, new_text)
         .with_context(|| "Failed to write .vrsettings back after changing it.")?;
     Ok(())
 }
 
-// Reads and writes back steamvr.vrsettings in order to
-// ensure the ALVR driver is not blocked (safe mode).
-fn unblock_alvr_driver_within_vrsettings(text: &str) -> Result<String> {
+// Reads and writes back steamvr.vrsettings in order to ensure the ALVR driver is not blocked
+// (safe mode) and that the SteamVR Home app is disabled (it crashes frequently on Linux; the
+// fallback compositor environment is stable).
+fn prepare_vrsettings_for_launch(text: &str) -> Result<String> {
     let mut settings = serde_json::from_str::<serde_json::Value>(text)?;
     let values = settings
         .as_object_mut()
@@ -103,6 +106,20 @@ fn unblock_alvr_driver_within_vrsettings(text: &str) -> Result<String> {
         driver.insert(BLOCKED_KEY.into(), json!(false)); // overwrites if present
     } else {
         debug!("ALVR is not blocked in SteamVR.");
+    }
+
+    let values = settings
+        .as_object_mut()
+        .with_context(|| "Failed to parse .vrsettings.")?;
+    if !values.contains_key(STEAMVR_KEY) {
+        values.insert(STEAMVR_KEY.into(), json!({}));
+    }
+    let steamvr_section = settings[STEAMVR_KEY]
+        .as_object_mut()
+        .with_context(|| "Did not find steamvr section in settings.")?;
+    if steamvr_section.get(HOME_APP_KEY).and_then(|v| v.as_bool()) != Some(false) {
+        debug!("Disabling SteamVR Home app (unstable on Linux).");
+        steamvr_section.insert(HOME_APP_KEY.into(), json!(false));
     }
 
     Ok(serde_json::to_string_pretty(&settings)?)
@@ -143,8 +160,8 @@ impl Launcher {
 
         alvr_server_io::driver_registration(&[alvr_driver_dir], true).ok();
 
-        if let Err(err) = unblock_alvr_driver() {
-            warn!("Failed to unblock ALVR driver: {:?}", err);
+        if let Err(err) = prepare_steamvr_settings() {
+            warn!("Failed to prepare SteamVR settings: {:?}", err);
         }
 
         #[cfg(target_os = "linux")]

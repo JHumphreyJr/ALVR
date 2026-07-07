@@ -479,7 +479,13 @@ pub unsafe extern "C" fn HmdDriverFactory(
             // When there is already a ALVR dashboard running, initialize the HMD device early to
             // avoid buggy SteamVR behavior
             // NB: we already bail out before if the dashboards don't belong to this streamer
-            let early_hmd_initialization = !dashboard_processes.is_empty();
+            //
+            // On Linux, always initialize early: without an HMD registered during
+            // IServerTrackedDeviceProvider::Init(), the first SteamVR launch comes up headless
+            // (blank/wireframe compositor) and a second launch is needed. The dashboard process
+            // check is also unreliable when SteamVR runs inside pressure-vessel/bubblewrap.
+            let early_hmd_initialization =
+                cfg!(target_os = "linux") || !dashboard_processes.is_empty();
 
             CppInit(early_hmd_initialization);
         }
