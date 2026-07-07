@@ -1,6 +1,7 @@
 #include "EncodePipeline.h"
 
 #include "EncodePipelineNvEnc.h"
+#include "EncodePipelineNvEncDirect.h"
 #include "EncodePipelineSW.h"
 #include "EncodePipelineVAAPI.h"
 #include "alvr_server/Logger.h"
@@ -31,6 +32,23 @@ std::unique_ptr<alvr::EncodePipeline> alvr::EncodePipeline::Create(
 ) {
     if (Settings::Instance().m_force_sw_encoding == false) {
         if (vk_ctx.nvidia) {
+#ifdef ALVR_DIRECT_NVENC
+            if (Settings::Instance().m_nvencDirectPipeline) {
+                try {
+                    auto direct = std::make_unique<alvr::EncodePipelineNvEncDirect>(
+                        render, vk_ctx, width, height
+                    );
+                    Info("Using direct NVENC encoder (zero copy)");
+                    return direct;
+                } catch (std::exception& e) {
+                    Error(
+                        "Failed to create direct NVENC encoder: %s\nFalling back to the FFmpeg "
+                        "NvEnc pipeline.",
+                        e.what()
+                    );
+                }
+            }
+#endif
             try {
                 auto nvenc = std::make_unique<alvr::EncodePipelineNvEnc>(
                     render, vk_ctx, input_frame, image_create_info, width, height

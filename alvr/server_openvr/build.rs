@@ -90,6 +90,16 @@ fn main() {
         build.include(ffmpeg_path.join("include"));
     }
 
+    // Direct (zero-copy) NVENC pipeline: only needs the ffnvcodec dynlink headers, which are
+    // present when deps were prepared with NVENC support (no --no-nvidia)
+    if platform_name == "linux" {
+        let nv_headers_include = alvr_filesystem::deps_dir().join("linux/nv-codec-headers/build/include");
+        if nv_headers_include.exists() {
+            build.include(&nv_headers_include);
+            build.define("ALVR_DIRECT_NVENC", None);
+        }
+    }
+
     #[cfg(all(target_os = "linux", feature = "gpl"))]
     {
         let x264_path = get_linux_x264_path();

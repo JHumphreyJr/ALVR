@@ -111,6 +111,13 @@ pub enum EntropyCoding {
 #[derive(SettingsSchema, Serialize, Deserialize, Clone, PartialEq)]
 #[schema(collapsible)]
 pub struct NvencConfig {
+    #[cfg_attr(not(target_os = "linux"), schema(flag = "hidden"))]
+    #[schema(strings(
+        display_name = "Direct zero-copy pipeline",
+        help = "Encode the compositor output directly with NVENC through CUDA-Vulkan interop, skipping FFmpeg and the per-frame Vulkan to CUDA copy. Lower latency. Falls back to the FFmpeg pipeline automatically on failure. Linux only."
+    ))]
+    #[schema(flag = "steamvr-restart")]
+    pub direct_zero_copy_pipeline: bool,
     #[schema(strings(
         help = "P1 is the fastest preset and P7 is the preset that produces better quality. P6 and P7 are too slow to be usable."
     ))]
@@ -1747,6 +1754,7 @@ pub fn session_settings_default() -> SettingsDefault {
                 },
                 nvenc: NvencConfigDefault {
                     gui_collapsed: true,
+                    direct_zero_copy_pipeline: true,
                     quality_preset: EncoderQualityPresetNvidiaDefault {
                         variant: EncoderQualityPresetNvidiaDefaultVariant::P1,
                     },

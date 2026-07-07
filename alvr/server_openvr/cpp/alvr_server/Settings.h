@@ -62,6 +62,7 @@ public:
     bool m_force_sw_encoding;
     uint32_t m_swThreadCount;
 
+    bool m_nvencDirectPipeline;
     uint32_t m_nvencTuningPreset;
     uint32_t m_nvencMultiPass;
     uint32_t m_nvencAdaptiveQuantizationMode;

@@ -84,6 +84,7 @@ void Settings::Load() {
         m_force_sw_encoding = config.get("force_sw_encoding").get<bool>();
         m_swThreadCount = (int32_t)config.get("sw_thread_count").get<int64_t>();
 
+        m_nvencDirectPipeline = config.get("nvenc_direct_pipeline").get<bool>();
         m_nvencTuningPreset = (uint32_t)config.get("nvenc_tuning_preset").get<int64_t>();
         m_nvencMultiPass = (uint32_t)config.get("nvenc_multi_pass").get<int64_t>();
         m_nvencAdaptiveQuantizationMode
