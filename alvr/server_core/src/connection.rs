@@ -180,6 +180,7 @@ pub fn contruct_openvr_config(session: &SessionConfig) -> OpenvrConfig {
         use_amf_preproc: amf_controls.use_preproc,
         amf_preproc_sigma: amf_controls.preproc_sigma,
         amf_preproc_tor: amf_controls.preproc_tor,
+        nvenc_direct_pipeline: nvenc_overrides.direct_zero_copy_pipeline,
         nvenc_quality_preset: nvenc_overrides.quality_preset as u32,
         encoder_quality_preset: settings.video.encoder_config.quality_preset as u32,
         force_sw_encoding: settings
@@ -761,8 +762,11 @@ fn connection_pipeline(
 
             game_audio_device.input_sample_rate().to_con()?
         }
+        // The ALVR PipeWire sink can run at any rate (PipeWire resamples transparently), so
+        // choose the native rate of virtually all headsets (including Vision Pro) to avoid a
+        // resampling pass on the client.
         #[cfg(target_os = "linux")]
-        44100
+        48000
     } else {
         0
     };
@@ -889,6 +893,17 @@ fn connection_pipeline(
             }
         }
     });
+
+    // On Linux, route system audio to the headset automatically by making the ALVR PipeWire
+    // nodes the default devices for the duration of the stream.
+    #[cfg(target_os = "linux")]
+    let _audio_defaults_guard = {
+        let take_sink = matches!(initial_settings.audio.game_audio, Switch::Enabled(_));
+        let take_source = matches!(initial_settings.audio.microphone, Switch::Enabled(_));
+
+        (take_sink || take_source)
+            .then(|| alvr_audio::linux::AudioDefaultsGuard::create(take_sink, take_source))
+    };
 
     #[cfg_attr(target_os = "linux", allow(unused_variables))]
     let game_audio_thread = if let Switch::Enabled(config) =
