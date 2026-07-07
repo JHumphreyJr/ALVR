@@ -187,10 +187,18 @@ fn connection_pipeline(
 
     *connection_state_lock = ConnectionState::Connecting;
 
+    // Querying the microphone device may fail (e.g. missing permission on iOS/visionOS). This
+    // must not abort the handshake: fall back to a sane default sample rate. The value is only
+    // used by the server when microphone streaming is enabled.
+    const FALLBACK_MICROPHONE_SAMPLE_RATE: u32 = 48000;
     let microphone_sample_rate = AudioDevice::new_input(None)
-        .to_con()?
-        .input_sample_rate()
-        .to_con()?;
+        .and_then(|device| device.input_sample_rate())
+        .unwrap_or_else(|e| {
+            warn!(
+                "Failed to query microphone sample rate, using {FALLBACK_MICROPHONE_SAMPLE_RATE} Hz: {e:#}"
+            );
+            FALLBACK_MICROPHONE_SAMPLE_RATE
+        });
 
     dbg_connection!("connection_pipeline: Send stream capabilities");
     proto_control_socket
@@ -385,9 +393,16 @@ fn connection_pipeline(
         thread::spawn(|| ())
     };
 
-    let microphone_thread = if matches!(settings.audio.microphone, Switch::Enabled(_)) {
-        let device = AudioDevice::new_input(None).to_con()?;
-
+    // A failing microphone device must not abort an established connection: log and continue
+    // streaming without microphone instead.
+    let microphone_device = if matches!(settings.audio.microphone, Switch::Enabled(_)) {
+        AudioDevice::new_input(None)
+            .map_err(|e| error!("Failed to open microphone device, disabling microphone: {e:#}"))
+            .ok()
+    } else {
+        None
+    };
+    let microphone_thread = if let Some(device) = microphone_device {
         let microphone_sender = stream_socket.request_stream(AUDIO);
 
         thread::spawn({
