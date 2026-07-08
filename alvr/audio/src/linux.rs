@@ -1,4 +1,9 @@
-use alvr_common::{anyhow::Result, debug, error, parking_lot::Mutex, ConnectionError};
+use alvr_common::{
+    anyhow::{bail, Result},
+    debug, error, info,
+    parking_lot::Mutex,
+    warn, ConnectionError,
+};
 use alvr_session::AudioBufferingConfig;
 use alvr_sockets::{StreamReceiver, StreamSender};
 use pipewire::{
@@ -10,8 +15,113 @@ use pipewire::{
     },
     stream::{StreamFlags, StreamListener, StreamState},
 };
-use std::{cmp, collections::VecDeque, sync::Arc, thread, time::Duration};
+use std::{
+    cmp,
+    collections::VecDeque,
+    process::Command,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    thread,
+    time::Duration,
+};
 struct Terminate;
+
+const ALVR_AUDIO_NODE_NAME: &str = "ALVR Audio";
+const ALVR_MICROPHONE_NODE_NAME: &str = "ALVR Microphone";
+
+fn pactl(args: &[&str]) -> Result<String> {
+    let output = Command::new("pactl").args(args).output()?;
+
+    if !output.status.success() {
+        bail!(
+            "pactl {args:?} failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+/// While alive, makes the ALVR virtual sink/source the system default so that game audio is
+/// streamed to the headset without manual configuration. The previous defaults are restored on
+/// drop (i.e. when the client disconnects).
+pub struct AudioDefaultsGuard {
+    previous_sink: Option<String>,
+    previous_source: Option<String>,
+    cancelled: Arc<AtomicBool>,
+}
+
+impl AudioDefaultsGuard {
+    pub fn create(take_sink: bool, take_source: bool) -> Self {
+        let previous_sink = take_sink
+            .then(|| pactl(&["get-default-sink"]).ok())
+            .flatten();
+        let previous_source = take_source
+            .then(|| pactl(&["get-default-source"]).ok())
+            .flatten();
+
+        let cancelled = Arc::new(AtomicBool::new(false));
+
+        // The ALVR nodes only appear once the PipeWire streams are connected, so retry in the
+        // background for a few seconds.
+        let cancelled_clone = Arc::clone(&cancelled);
+        thread::spawn(move || {
+            let mut sink_pending = take_sink;
+            let mut source_pending = take_source;
+
+            for _ in 0..40 {
+                if cancelled_clone.load(Ordering::Relaxed) || (!sink_pending && !source_pending) {
+                    return;
+                }
+
+                if sink_pending && pactl(&["set-default-sink", ALVR_AUDIO_NODE_NAME]).is_ok() {
+                    info!("Set \"{ALVR_AUDIO_NODE_NAME}\" as the default audio output");
+                    sink_pending = false;
+                }
+                if source_pending
+                    && pactl(&["set-default-source", ALVR_MICROPHONE_NODE_NAME]).is_ok()
+                {
+                    info!("Set \"{ALVR_MICROPHONE_NODE_NAME}\" as the default audio input");
+                    source_pending = false;
+                }
+
+                thread::sleep(Duration::from_millis(250));
+            }
+
+            if sink_pending {
+                warn!(
+                    "Could not set \"{ALVR_AUDIO_NODE_NAME}\" as default audio output. \
+                    Select it manually to hear game audio in the headset."
+                );
+            }
+        });
+
+        Self {
+            previous_sink,
+            previous_source,
+            cancelled,
+        }
+    }
+}
+
+impl Drop for AudioDefaultsGuard {
+    fn drop(&mut self) {
+        self.cancelled.store(true, Ordering::Relaxed);
+
+        if let Some(sink) = self.previous_sink.take() {
+            if let Err(e) = pactl(&["set-default-sink", &sink]) {
+                warn!("Failed to restore default audio output: {e}");
+            }
+        }
+        if let Some(source) = self.previous_source.take() {
+            if let Err(e) = pactl(&["set-default-source", &source]) {
+                warn!("Failed to restore default audio input: {e}");
+            }
+        }
+    }
+}
 
 pub fn play_microphone_loop_pipewire(
     running: impl Fn() -> bool,
