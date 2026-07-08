@@ -38,7 +38,11 @@ Hmd::Hmd()
                                                  : vr::TrackedDeviceClass_HMD
       )
     , m_baseComponentsInitialized(false)
-    , m_streamComponentsInitialized(false) {
+    , m_streamComponentsInitialized(false)
+#ifndef _WIN32
+    , m_deferLensDistortionChanged(true)
+#endif
+    {
     Debug("Hmd::constructor");
 
     auto dummy_fov = FfiFov { -1.0, 1.0, 1.0, -1.0 };
@@ -235,6 +239,10 @@ void Hmd::OnPoseUpdated(uint64_t targetTimestampNs, FfiDeviceMotion motion) {
 void Hmd::StartStreaming() {
     Debug("Hmd::StartStreaming");
 
+#ifndef _WIN32
+    m_deferLensDistortionChanged = true;
+#endif
+
     vr::VRDriverInput()->UpdateBooleanComponent(m_proximity, true, 0.0);
 
     if (m_streamComponentsInitialized) {
@@ -303,10 +311,23 @@ void Hmd::SetViewsConfig(FfiViewsConfig config) {
     }
 #endif
 
-    // todo: check if this is still needed
+    // LensDistortionChanged rebuilds the compositor warp mesh. On first connect the mesh is
+    // healthy (99.98%) but this event drops it to 0.00% and kills vrcompositor on Linux/2.12.
+    // Defer until a subsequent views update (second connect / SteamVR restart path).
+#ifndef _WIN32
+    if (m_deferLensDistortionChanged) {
+        m_deferLensDistortionChanged = false;
+        Debug("Hmd::SetViewsConfig: deferring LensDistortionChanged");
+    } else {
+        vr::VRServerDriverHost()->VendorSpecificEvent(
+            object_id, vr::VREvent_LensDistortionChanged, {}, 0
+        );
+    }
+#else
     vr::VRServerDriverHost()->VendorSpecificEvent(
         object_id, vr::VREvent_LensDistortionChanged, {}, 0
     );
+#endif
 }
 
 void Hmd::GetWindowBounds(int32_t* pnX, int32_t* pnY, uint32_t* pnWidth, uint32_t* pnHeight) {

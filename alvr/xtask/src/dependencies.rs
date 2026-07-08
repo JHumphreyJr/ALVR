@@ -245,7 +245,7 @@ pub fn build_ffmpeg_linux(enable_nvenc: bool, deps_path: &Path) {
                 "--enable-nonfree",
                 "--enable-cuda-nvcc",
                 "--enable-libnpp",
-                "--nvccflags=\"-gencode arch=compute_52,code=sm_52 -O2\"",
+                "--nvccflags=\"-gencode arch=compute_86,code=sm_86 -O2\"",
                 &format!("--extra-cflags=\"{include_flags}\""),
                 &format!("--extra-ldflags=\"{link_flags}\""),
             ];

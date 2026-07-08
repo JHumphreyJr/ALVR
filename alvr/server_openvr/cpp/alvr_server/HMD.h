@@ -37,6 +37,9 @@ private:
 
     bool m_baseComponentsInitialized;
     bool m_streamComponentsInitialized;
+#ifndef _WIN32
+    bool m_deferLensDistortionChanged;
+#endif
 
     vr::HmdMatrix34_t m_eyeToHeadLeft;
     vr::HmdMatrix34_t m_eyeToHeadRight;

@@ -242,6 +242,51 @@ pub fn contruct_openvr_config(session: &SessionConfig) -> OpenvrConfig {
     }
 }
 
+fn view_resolution_from_settings(config: FrameSize, fallback: UVec2) -> UVec2 {
+    let res = match config {
+        FrameSize::Scale(scale) => fallback.as_vec2() * scale,
+        FrameSize::Absolute { width, height } => {
+            let width = width as f32;
+            Vec2::new(
+                width,
+                height.map_or_else(
+                    || {
+                        let fallback_res = fallback.as_vec2();
+                        width * fallback_res.y / fallback_res.x
+                    },
+                    |h| h as f32,
+                ),
+            )
+        }
+    };
+
+    UVec2::new(align32(res.x), align32(res.y))
+}
+
+/// Keep `session.openvr_config` aligned with negotiated streaming parameters so the
+/// handshake does not trigger a mid-connect SteamVR restart.
+pub fn presync_openvr_config(session: &mut SessionConfig) {
+    let settings = session.to_settings();
+    let fallback = UVec2::new(2880, 1800);
+
+    let stream_view_resolution =
+        view_resolution_from_settings(settings.video.transcoding_view_resolution.clone(), fallback);
+    let target_view_resolution = view_resolution_from_settings(
+        settings.video.emulated_headset_view_resolution.clone(),
+        fallback,
+    );
+
+    let mut openvr_config = contruct_openvr_config(session);
+    openvr_config.eye_resolution_width = stream_view_resolution.x;
+    openvr_config.eye_resolution_height = stream_view_resolution.y;
+    openvr_config.target_eye_resolution_width = target_view_resolution.x;
+    openvr_config.target_eye_resolution_height = target_view_resolution.y;
+    openvr_config.refresh_rate = settings.video.preferred_fps as u32;
+    openvr_config.codec = settings.video.preferred_codec as u8;
+
+    session.openvr_config = openvr_config;
+}
+
 // Alternate connection trials with manual IPs and clients discovered on the local network
 pub fn handshake_loop(ctx: Arc<ConnectionContext>, lifecycle_state: Arc<RwLock<LifecycleState>>) {
     dbg_connection!("handshake_loop: Begin");
@@ -583,24 +628,7 @@ fn connection_pipeline(
     let initial_settings = session_manager_lock.settings().clone();
 
     fn get_view_res(config: FrameSize, default_res: UVec2) -> UVec2 {
-        let res = match config {
-            FrameSize::Scale(scale) => default_res.as_vec2() * scale,
-            FrameSize::Absolute { width, height } => {
-                let width = width as f32;
-                Vec2::new(
-                    width,
-                    height.map_or_else(
-                        || {
-                            let default_res = default_res.as_vec2();
-                            width * default_res.y / default_res.x
-                        },
-                        |h| h as f32,
-                    ),
-                )
-            }
-        };
-
-        UVec2::new(align32(res.x), align32(res.y))
+        view_resolution_from_settings(config, default_res)
     }
 
     let stream_view_resolution = get_view_res(
@@ -806,10 +834,8 @@ fn connection_pipeline(
 
     if session_manager_lock.session().openvr_config != new_openvr_config {
         session_manager_lock.session_mut().openvr_config = new_openvr_config;
-
-        control_sender.send(&ServerControlPacket::Restarting).ok();
-
-        crate::notify_restart_driver();
+        // Do not restart the driver mid-handshake: that kills vrcompositor on first connect.
+        // Config is persisted for the next SteamVR launch; presync keeps values aligned beforehand.
     }
 
     dbg_connection!("connection_pipeline: Send StartStream packet");

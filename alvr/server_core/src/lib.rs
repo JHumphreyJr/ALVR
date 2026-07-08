@@ -194,6 +194,11 @@ impl ServerCoreContext {
 
         SESSION_MANAGER.write().clean_client_list();
 
+        {
+            let mut session_manager_lock = SESSION_MANAGER.write();
+            connection::presync_openvr_config(&mut *session_manager_lock.session_mut());
+        }
+
         let (events_sender, events_receiver) = mpsc::channel();
 
         // Create a temporary StatisticsManager until a headset connects
