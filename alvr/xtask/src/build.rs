@@ -177,6 +177,12 @@ pub fn build_streamer(
             build_layout.dashboard_exe(),
         )
         .unwrap();
+
+        sh.copy_file(
+            artifacts_dir.join(afs::exec_fname("alvr_server")),
+            build_layout.executables_dir.join(afs::exec_fname("alvr_server")),
+        )
+        .unwrap();
     }
 
     // copy dependencies

@@ -3,23 +3,23 @@
   "openvr_config": {
     "eye_resolution_width": 3072,
     "eye_resolution_height": 1536,
-    "target_eye_resolution_width": 2144,
-    "target_eye_resolution_height": 1072,
+    "target_eye_resolution_width": 2560,
+    "target_eye_resolution_height": 1280,
     "tracking_ref_only": false,
     "enable_vive_tracker_proxy": false,
-    "minimum_idr_interval_ms": 100,
+    "minimum_idr_interval_ms": 50,
     "adapter_index": 0,
     "codec": 1,
     "h264_profile": 0,
-    "refresh_rate": 72,
+    "refresh_rate": 90,
     "use_10bit_encoder": false,
     "use_full_range_encoding": true,
-    "encoding_gamma": 1.5,
+    "encoding_gamma": 1.0,
     "enable_hdr": false,
     "force_hdr_srgb_correction": false,
     "clamp_hdr_extended_range": false,
     "enable_amf_pre_analysis": false,
-    "enable_vbaq": false,
+    "enable_vbaq": true,
     "enable_amf_hmqb": false,
     "use_amf_preproc": false,
     "amf_preproc_sigma": 4,
@@ -27,7 +27,7 @@
     "encoder_quality_preset": 2,
     "rate_control_mode": 0,
     "filler_data": false,
-    "entropy_coding": 1,
+    "entropy_coding": 0,
     "force_sw_encoding": false,
     "sw_thread_count": 0,
     "controller_is_tracker": false,
@@ -49,9 +49,9 @@
     "sharpening": 0.0,
     "linux_async_compute": false,
     "linux_async_reprojection": false,
-    "nvenc_quality_preset": 1,
+    "nvenc_quality_preset": 3,
     "nvenc_tuning_preset": 2,
-    "nvenc_multi_pass": 1,
+    "nvenc_multi_pass": 0,
     "nvenc_adaptive_quantization_mode": 1,
     "nvenc_low_delay_key_frame_scale": -1,
     "nvenc_refresh_rate": -1,
@@ -83,6 +83,13 @@
     "_decoder_debug": false
   },
   "client_connections": {
+    "5595.client.alvr": {
+      "display_name": "Apple Headset",
+      "current_ip": "192.168.1.145",
+      "manual_ips": [],
+      "trusted": true,
+      "connection_state": "Disconnected"
+    },
     "6515.client.alvr": {
       "display_name": "Apple Headset",
       "current_ip": null,
@@ -127,7 +134,39 @@
       "bitrate": {
         "gui_collapsed": false,
         "mode": {
-          "ConstantMbps": 150
+          "ConstantMbps": 150,
+          "Adaptive": {
+            "gui_collapsed": true,
+            "saturation_multiplier": 0.98,
+            "max_throughput_mbps": {
+              "enabled": true,
+              "content": 300
+            },
+            "min_throughput_mbps": {
+              "enabled": true,
+              "content": 120
+            },
+            "max_network_latency_ms": {
+              "enabled": true,
+              "content": 12
+            },
+            "encoder_latency_limiter": {
+              "enabled": false,
+              "content": {
+                "max_saturation_multiplier": 0.9
+              }
+            },
+            "decoder_latency_limiter": {
+              "enabled": true,
+              "content": {
+                "gui_collapsed": false,
+                "max_decoder_latency_ms": 20,
+                "latency_overstep_frames": 45,
+                "latency_overstep_multiplier": 0.99
+              }
+            }
+          },
+          "variant": "Adaptive"
         },
         "adapt_to_framerate": {
           "enabled": false,
@@ -164,15 +203,15 @@
           "sharpening": 0.5
         }
       },
-      "max_buffering_frames": 2.0,
-      "buffering_history_weight": 0.9,
+      "max_buffering_frames": 1.5,
+      "buffering_history_weight": 0.85,
       "enforce_server_frame_pacing": true,
       "encoder_config": {
         "gui_collapsed": true,
         "quality_preset": {
-          "variant": "Speed"
+          "variant": "Quality"
         },
-        "enable_vbaq": false,
+        "enable_vbaq": true,
         "rate_control_mode": {
           "variant": "Cbr"
         },
@@ -180,7 +219,7 @@
           "variant": "High"
         },
         "entropy_coding": {
-          "variant": "Cavlc"
+          "variant": "Cabac"
         },
         "filler_data": false,
         "use_10bit": false,
@@ -199,13 +238,13 @@
         "nvenc": {
           "gui_collapsed": true,
           "quality_preset": {
-            "variant": "P1"
+            "variant": "P3"
           },
           "tuning_preset": {
             "variant": "LowLatency"
           },
           "multi_pass": {
-            "variant": "QuarterResolution"
+            "variant": "FullResolution"
           },
           "adaptive_quantization_mode": {
             "variant": "Spatial"
@@ -293,15 +332,15 @@
       "emulated_headset_view_resolution": {
         "Scale": 1.0,
         "Absolute": {
-          "width": 2144,
+          "width": 2560,
           "height": {
             "set": true,
-            "content": 1072
+            "content": 1280
           }
         },
         "variant": "Absolute"
       },
-      "preferred_fps": 72.0,
+      "preferred_fps": 90.0,
       "adapter_index": 0,
       "clientside_foveation": {
         "enabled": false,
@@ -359,8 +398,8 @@
           "mute_when_streaming": true,
           "buffering": {
             "gui_collapsed": true,
-            "average_buffering_ms": 50,
-            "batch_ms": 10
+            "average_buffering_ms": 40,
+            "batch_ms": 8
           }
         }
       },
@@ -431,7 +470,7 @@
               "repeat_delay": 100
             }
           },
-          "steamvr_pipeline_frames": 2.1,
+          "steamvr_pipeline_frames": 1.5,
           "haptics": {
             "enabled": true,
             "content": {
@@ -623,11 +662,11 @@
           "orientation_correction": true
         }
       },
-      "max_prediction_ms": 100
+      "max_prediction_ms": 70
     },
     "connection": {
       "stream_protocol": {
-        "variant": "Tcp"
+        "variant": "Udp"
       },
       "client_discovery": {
         "enabled": true,
@@ -666,9 +705,9 @@
       },
       "max_queued_server_video_frames": 1024,
       "statistics_history_size": 256,
-      "minimum_idr_interval_ms": 100,
+      "minimum_idr_interval_ms": 50,
       "dscp": {
-        "set": false,
+        "set": true,
         "content": {
           "ClassSelector": 7,
           "AssuredForwarding": {
@@ -683,7 +722,7 @@
     },
     "extra": {
       "steamvr_launcher": {
-        "open_close_steamvr_with_dashboard": false
+        "open_close_steamvr_with_dashboard": true
       },
       "capture": {
         "startup_video_recording": false,

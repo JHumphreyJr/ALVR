@@ -165,6 +165,11 @@ impl Launcher {
             #[cfg(target_os = "linux")]
             linux_steamvr::start_steamvr();
         }
+
+        #[cfg(target_os = "linux")]
+        crate::steamvr_supervisor::write_launch_marker();
+        #[cfg(target_os = "linux")]
+        crate::steamvr_supervisor::record_steamvr_launch();
     }
 
     pub fn ensure_steamvr_shutdown(&self) {
@@ -178,6 +183,9 @@ impl Launcher {
     }
 
     pub fn restart_steamvr(&self) {
+        #[cfg(target_os = "linux")]
+        crate::steamvr_supervisor::request_immediate_restart();
+
         self.ensure_steamvr_shutdown();
         self.launch_steamvr();
     }

@@ -1,0 +1,16 @@
+[Unit]
+Description=ALVR headless server (SteamVR supervisor)
+After=network-online.target pipewire.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=XDG_RUNTIME_DIR=/run/user/%U
+ExecStart=%h/.local/share/ALVR-Launcher/installations/v20.14.1/alvr_streamer_linux/bin/alvr_server
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

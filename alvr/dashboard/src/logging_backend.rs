@@ -46,5 +46,6 @@ pub fn init_logging(event_sender: mpsc::Sender<PolledEvent>) {
                 record.args()
             )
         })
-        .init();
+        .try_init()
+        .ok();
 }

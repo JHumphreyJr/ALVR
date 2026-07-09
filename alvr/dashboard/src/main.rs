@@ -1,28 +1,11 @@
 // hide console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod dashboard;
-
+use alvr_dashboard::dashboard::Dashboard;
 #[cfg(not(target_arch = "wasm32"))]
-mod data_sources;
+use alvr_dashboard::data_sources::DataSources;
 #[cfg(target_arch = "wasm32")]
-mod data_sources_wasm;
-#[cfg(not(target_arch = "wasm32"))]
-mod logging_backend;
-#[cfg(not(target_arch = "wasm32"))]
-mod steamvr_launcher;
-
-#[cfg(not(target_arch = "wasm32"))]
-use data_sources::DataSources;
-#[cfg(target_arch = "wasm32")]
-use data_sources_wasm::DataSources;
-
-use alvr_filesystem as afs;
-use dashboard::Dashboard;
-
-fn get_filesystem_layout() -> afs::Layout {
-    afs::filesystem_layout_from_dashboard_exe(&std::env::current_exe().unwrap()).unwrap()
-}
+use alvr_dashboard::data_sources_wasm::DataSources;
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
@@ -47,17 +30,22 @@ fn main() {
     }
 
     let (server_events_sender, server_events_receiver) = mpsc::channel();
-    logging_backend::init_logging(server_events_sender.clone());
+    alvr_dashboard::logging_backend::init_logging(server_events_sender.clone());
 
-    data_sources::clean_session();
+    alvr_dashboard::data_sources::clean_session();
 
-    if data_sources::get_read_only_local_session()
+    #[cfg(target_os = "linux")]
+    alvr_dashboard::steamvr_supervisor::start_supervisor_thread();
+
+    if alvr_dashboard::data_sources::get_read_only_local_session()
         .settings()
         .extra
         .steamvr_launcher
         .open_close_steamvr_with_dashboard
     {
-        steamvr_launcher::LAUNCHER.lock().launch_steamvr()
+        alvr_dashboard::steamvr_launcher::LAUNCHER
+            .lock()
+            .launch_steamvr();
     }
 
     let ico = IconDir::read(Cursor::new(include_bytes!("../resources/dashboard.ico"))).unwrap();
