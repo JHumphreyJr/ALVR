@@ -1,14 +1,54 @@
 # Vision Pro lifecycle test scenarios
 
 Reference for touchless-server / native-headset parity testing.  
-Mark each: **PASS** | **FAIL** | **SKIP** + notes.
+Mark each: **PASS** | **FAIL** | **PARTIAL** | **SKIP** + notes.
+
+## Latest session — 2026-07-09 (Tensorbook, SteamVR 2.12.14, dashboard + supervisor)
+
+**Entry point:** `alvr_dashboard` (not headless `alvr_server`).  
+**Session:** high-bandwidth UDP profile in `~/.config/alvr/session.json`.  
+**Log monitor:** `/tmp/alvr_lifecycle_test.log`
+
+| ID | Result | Notes |
+|----|--------|-------|
+| A1 | **PASS** | Dashboard autostarted SteamVR via supervisor |
+| A2 | **PARTIAL** | Connect worked; Enter VR slow until dashboard banner cleared (server core in driver only starts after client connects) |
+| A3 | **PASS** | Stable image in SteamVR Home / grid |
+| B1 | **PASS** | Headset off mid-game → game paused (PC preview) |
+| B2 | **PARTIAL** | First attempt: blue lines + black PC preview (TCP dropped). Second attempt same session: **PASS** — resume mid-game worked |
+| B3 | SKIP | Not tested |
+| C1–C2 | SKIP | Not tested this session |
+| C4–C5 | **PASS** | Force-quit + reconnect after B2 failure restored clean image |
+| D1 | **PASS** | Grid shell stable |
+| D2 | **PASS** | Pistol Whip playable |
+| D3 | **PARTIAL** | Exit game → grid → Steam menu **Exit VR** on PC → SteamVR closed, VP wireframes (expected). Relaunch ALVR from visionOS home → dashboard **auto-launched SteamVR** (**PASS**). Enter VR → **FAIL**: viewport shifted right, rectangular window visible, controllers misaligned |
+| D4 | PARTIAL | Exit VR closed SteamVR entirely (may be game/shell dependent) |
+| D5 | SKIP | Covered implicitly by D3 relaunch path |
+| F1–F3 | SKIP | Supervisor false-positive kill fixed; no manual kill tests |
+| G1 | PASS | Audio in game (prior sessions) |
+
+### Open bugs from this session (priority)
+
+1. **Exit VR → relaunch:** stale or wrong `ViewsConfig` / compositor state → viewport offset, visible stream rectangle (Phase 4 + client K4).
+2. **Cold / warm connect latency:** dashboard banner until `:8082` live (Phase 2 daemon).
+3. **B2 intermittent:** headset-off may drop TCP instead of standby-resume (server + client proximity).
+
+### Workarounds until fixed
+
+| Symptom | Workaround |
+|---------|------------|
+| Blue lines / black preview after headset-off | Force-quit ALVR on VP; **Restart SteamVR** in dashboard; reconnect |
+| Viewport shifted / rectangular window after Exit VR relaunch | Force-quit ALVR on VP; Restart SteamVR; reconnect (full handshake) |
+| Slow Enter VR button | Wait for dashboard “SteamVR: Connected” (green); banner clears when driver is up |
+
+---
 
 ## A. Cold start (PC idle)
 
 | ID | Scenario | Native headset expectation | What to watch |
 |----|----------|---------------------------|---------------|
-| A1 | PC running `alvr_server`, SteamVR down | N/A | Supervisor launches SteamVR; compositor healthy |
-| A2 | Open ALVR on VP, connect | Link establishes quickly | Handshake time, first video / wireframes |
+| A1 | PC running **dashboard**, SteamVR down | N/A | Supervisor launches SteamVR; compositor healthy when streaming |
+| A2 | Open ALVR on VP, connect | Link establishes quickly | Handshake time, dashboard banner, Enter VR delay |
 | A3 | First video appears | Immediate usable image | IDR, warp mesh %, `deferring LensDistortionChanged` |
 
 ## B. Wear / remove (no app kill)
@@ -34,10 +74,10 @@ Mark each: **PASS** | **FAIL** | **SKIP** + notes.
 | ID | Scenario | Native expectation | What to watch |
 |----|----------|------------------|---------------|
 | D1 | SteamVR Home / void visible after connect | Lobby shell | Home vs grid; compositor stable |
-| D2 | Launch game from SteamVR (e.g. HL:Alyx menu) | Enters VR normally | Encoder, audio routing |
-| D3 | **Exit VR** from Steam menu (stay in game) | Back to SteamVR shell; HMD still connected | **Known bug**: compositor crash, wireframes |
+| D2 | Launch game from SteamVR (e.g. Pistol Whip) | Enters VR normally | Encoder, audio routing |
+| D3 | **Exit VR** from Steam menu, then relaunch ALVR | Back to shell; HMD reconnects with correct view | Wireframes OK; **viewport shift / window rect on relaunch** |
 | D4 | Exit game entirely to desktop | SteamVR may stay running | vrserver/compositor state |
-| D5 | Relaunch SteamVR from ALVR dashboard while VP connected | Should recover | Double vision risk |
+| D5 | Relaunch SteamVR from ALVR dashboard while VP connected | Should recover | Double vision / offset risk |
 
 ## E. Network / room change
 
@@ -50,7 +90,7 @@ Mark each: **PASS** | **FAIL** | **SKIP** + notes.
 
 | ID | Scenario | Native expectation | What to watch |
 |----|----------|------------------|---------------|
-| F1 | Kill `vrcompositor` while streaming | Auto recovery | Supervisor backoff, restart ≤2 then backoff |
+| F1 | Kill `vrcompositor` while streaming | Auto recovery | Supervisor backoff; no false positive on `shrink wrap saved 0.00%` |
 | F2 | Kill `vrserver` while streaming | Auto recovery | Driver reload, client reconnect |
 | F3 | SteamVR safe mode (driver blocked) | Unblock + relaunch | `blocked_by_safe_mode` cleared |
 
@@ -66,12 +106,21 @@ Mark each: **PASS** | **FAIL** | **SKIP** + notes.
 ## Suggested test order (one session ~20–30 min)
 
 1. A1 → A3 (cold connect)
-2. D2 short play (30s in HL:Alyx or SteamVR Home)
+2. D2 short play (30s in game or SteamVR Home)
 3. B1 → B2 (take off / put on)
 4. C1 → C2 (background / return)
-5. D3 (Exit VR) — **critical**
+5. D3 (Exit VR + relaunch ALVR) — **critical**
 6. C4 → C5 (kill app / reconnect)
 7. D5 only if D3 failed badly
 8. E1 if time permits
 
-Log monitor output: `/tmp/alvr_lifecycle_test.log`
+Log monitor:
+
+```bash
+: > /tmp/alvr_lifecycle_test.log
+tail -n 0 -F /tmp/alvr_dashboard.log \
+  ~/.local/share/Steam/logs/vrserver.txt \
+  ~/.local/share/Steam/logs/vrcompositor.txt \
+  | grep -E --line-buffered 'supervisor|recovering|Warp mesh|Streaming|standby|LensDistortion' \
+  >> /tmp/alvr_lifecycle_test.log &
+```

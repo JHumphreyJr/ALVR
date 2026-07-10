@@ -157,17 +157,28 @@ Recommendation: supervisor tries Home once per SteamVR launch; on repeated compo
 
 ---
 
-## SteamVR supervisor (implemented)
+## SteamVR supervisor (implemented — Phase 1)
 
-The dashboard and `alvr_server` binary run a background **SteamVR supervisor** that:
+The **ALVR dashboard** (normal entry point) and optional **`alvr_server`** binary share a background **SteamVR supervisor**:
 
 - Records ALVR-owned launches in `$XDG_RUNTIME_DIR/alvr/steamvr-launch.json`
-- Polls `vrserver`, `vrcompositor`, and compositor logs every 3 s
+- Polls `vrserver`, `vrcompositor` / `vrcompositor.real`, and compositor logs every 3 s
 - Recovers with **exponential backoff**: 5 s → 10 → 20 → … capped at **5 minutes**
-- Resets backoff after a healthy check or manual restart
-- Treats foreign `vrserver` (no launch marker) as recoverable
+- **Idle:** does not require `vrcompositor` when no client is connected (SteamVR can wait for headset)
+- **Log matching:** only `Warp mesh … covers 0.00%`, not `shrink wrap saved 0.00%` or `HiddenArea(0.00%)`
+- Debounces unhealthy state (3 consecutive polls) before restart
+- Resets backoff after a healthy check or manual **Restart SteamVR** in dashboard
 
-### Headless service
+### Normal vs headless launch
+
+| Mode | Command | When |
+|------|---------|------|
+| **Desktop (recommended)** | ALVR Launcher → `alvr_dashboard` | X11 session; GUI + supervisor |
+| **Boot service (optional)** | `alvr_server` via systemd | No GUI; same supervisor only |
+
+Set `open_close_steamvr_with_dashboard: true` in session for auto-launch on dashboard/service start.
+
+### Headless service (optional)
 
 ```bash
 systemctl --user enable --now /path/to/scripts/known-good-steamvr-2.12/alvr-server.service
@@ -179,15 +190,29 @@ Or run directly:
 ~/.local/share/ALVR-Launcher/installations/v20.14.1/alvr_streamer_linux/bin/alvr_server
 ```
 
-Set `open_close_steamvr_with_dashboard: true` in session for auto-launch on service start.
+---
 
+## Phase status (2026-07-09)
 
-1. Boot PC, no input → within 2 min daemon listening, ports open.
-2. From VP: connect while SteamVR was **not** pre-running → supervisor starts SteamVR; video within 60 s (until client optimizations).
-3. **Exit VR** in Half-Life: Alyx → within 30 s compositor healthy again OR client sees disconnect and reconnects without PC touch.
-4. Kill `vrcompositor` manually → supervisor restores within 2 attempts.
-5. Trigger safe mode → next cycle unblocks driver and relaunches.
-6. SteamVR update (simulate wrapper break) → next launch re-wraps successfully.
+| Phase | Status | Notes |
+|-------|--------|-------|
+| **1 — Supervisor** | **Done** | Dashboard + `alvr_server`; false-positive fix tested |
+| **2 — Always-on daemon** | Pending | Handshake still requires driver / SteamVR |
+| **3 — systemd** | Unit provided | `alvr-server.service` |
+| **4 — Exit VR / reconnect** | **Open** | Viewport shift after Exit VR + ALVR relaunch (D3 partial fail) |
+
+See [VP-LIFECYCLE-SCENARIOS.md](./VP-LIFECYCLE-SCENARIOS.md) for test results.
+
+---
+
+## Acceptance tests (updated)
+
+1. Boot PC, launch **dashboard** once → SteamVR warm; no PC interaction during VP session.
+2. From VP: connect while SteamVR idle → video within ~60 s (until Phase 2).
+3. **Exit VR** → relaunch ALVR → supervisor starts SteamVR → **viewport must be centered** (currently **FAIL** — Phase 4).
+4. Headset off/on mid-game → resume without blue lines (intermittent — B2 partial).
+5. Kill `vrcompositor` manually → supervisor restores without false positive on healthy logs.
+6. Trigger safe mode → next cycle unblocks driver and relaunches.
 
 ---
 

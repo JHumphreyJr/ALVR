@@ -159,6 +159,31 @@ sequenceDiagram
 
 Discovery: UDP `WelcomeSocket` + trusted clients in `session.json`.
 
+## SteamVR supervisor (dashboard)
+
+```mermaid
+flowchart LR
+    Dash["alvr_dashboard"]
+    Sup["Supervisor thread"]
+    Launch["LAUNCHER.launch_steamvr"]
+    SV["SteamVR"]
+    Dash --> Sup
+    Sup -->|health fail| Launch
+    Launch --> SV
+    Sup -->|poll 3s| SV
+```
+
+Lives in `alvr/dashboard/src/steamvr_supervisor/linux.rs`. Started when dashboard (or `alvr_server`) starts.
+
+## Known lifecycle gaps (2026-07-09 testing)
+
+| Issue | Cause | Mitigation |
+|-------|-------|------------|
+| Slow Enter VR / dashboard banner | Server Core only in driver; `:8082` up after client connects | Phase 2 daemon |
+| Viewport shifted after Exit VR + relaunch | Stale ViewsConfig / compositor not reset | Force-quit ALVR + Restart SteamVR; Phase 4 + client re-send ViewsConfig |
+| Blue lines after headset-off | TCP session dropped mid-standby | Force-quit + reconnect; client proximity (deferred) |
+| First-connect warp mesh crash | `LensDistortionChanged` on first `SetViewsConfig` | Deferred on Linux (`HMD.cpp`) — fixed |
+
 ## Key paths
 
 | Path | Purpose |
@@ -169,4 +194,4 @@ Discovery: UDP `WelcomeSocket` + trusted clients in `session.json`.
 | `.../installations/v20.14.1/alvr_streamer_linux/` | Streamer install |
 | `$XDG_RUNTIME_DIR/alvr-ipc` | Compositor ↔ encoder |
 
-See also: [README.md](./README.md) for restore steps and known-good settings.
+See also: [README.md](./README.md), [VP-LIFECYCLE-SCENARIOS.md](./VP-LIFECYCLE-SCENARIOS.md), [REQUIREMENTS-headless-server.md](./REQUIREMENTS-headless-server.md).

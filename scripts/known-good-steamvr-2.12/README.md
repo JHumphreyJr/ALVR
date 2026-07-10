@@ -203,6 +203,28 @@ strings ~/.local/share/ALVR-Launcher/installations/v20.14.1/alvr_streamer_linux/
 
 ---
 
+## Touchless PC (normal use)
+
+**Goal:** launch ALVR once at login, then operate entirely from the Vision Pro.
+
+| Use | Binary |
+|-----|--------|
+| **Normal desktop** | **`alvr_dashboard`** via ALVR Launcher — GUI + SteamVR supervisor |
+| **Optional boot service** | `alvr_server` (no window) — same supervisor; see `alvr-server.service` |
+
+Enable in session: `extra.steamvr_launcher.open_close_steamvr_with_dashboard: true`.
+
+The supervisor (in dashboard since commit `cf88690f`):
+
+- Auto-launches SteamVR when the dashboard starts
+- Does **not** require `vrcompositor` while idle (no headset connected)
+- Debounces recovery (3 polls) and ignores healthy warp-mesh log lines (`shrink wrap saved 0.00%`)
+- Restarts SteamVR on real compositor failure with exponential backoff (5 s → 300 s cap)
+
+**Do not run dashboard and `alvr_server` at the same time** — two supervisors will fight.
+
+---
+
 ## Monitoring
 
 ```bash
@@ -226,10 +248,14 @@ SteamVR logs: `~/.local/share/Steam/logs/{vrserver,vrcompositor,vrmonitor}.txt`
 |---------|-----|
 | Error **303** | Pin SteamVR to `steamvr_2_12`; fix vrcompositor wrapper |
 | **Wireframes** on VP | Compositor crash or no video; check warp mesh 0.00% in vrcompositor.txt |
-| **Double vision** | Distortion mesh stale; reconnect or match emulated resolution |
+| **Double vision** | Distortion mesh stale; force-quit ALVR + Restart SteamVR in dashboard |
+| **Viewport shifted right / visible window rect** | After Exit VR relaunch; stale ViewsConfig — force-quit ALVR, Restart SteamVR, reconnect (Phase 4 fix pending) |
+| **Slow Enter VR** / dashboard banner | Server core starts with driver on connect; wait for SteamVR: Connected (Phase 2 daemon) |
+| **Blue lines after headset-off** | Session dropped; force-quit ALVR + Restart SteamVR |
 | VP can't find PC | Same WiFi subnet; check `ip addr` on both devices |
 | Safe mode / driver blocked | Set `driver_alvr_server.blocked_by_safe_mode: false` in steamvr.vrsettings |
 | `emulated height` wrong | Must be `set: true, content: 1072` — see `session.json` here |
+| Supervisor killed SteamVR mid-session | Fixed in `cf88690f`; rebuild and redeploy dashboard |
 
 ---
 
@@ -237,12 +263,22 @@ SteamVR logs: `~/.local/share/Steam/logs/{vrserver,vrcompositor,vrmonitor}.txt`
 
 ```
 scripts/known-good-steamvr-2.12/
-├── README.md          # this file
-├── session.json       # fixed session (height.set=true, openvr_config synced)
-├── restore.sh         # copy session + print SteamVR pin reminder
-└── build-from-source.sh
+├── README.md                      # this file
+├── ARCHITECTURE.md                # component diagram, driver load path
+├── REQUIREMENTS-headless-server.md # touchless PC requirements + phases
+├── VP-LIFECYCLE-SCENARIOS.md      # test matrix + 2026-07-09 results
+├── session.json                   # reference session (sync openvr_config)
+├── restore.sh                     # copy session + SteamVR hints
+├── build-from-source.sh
+└── alvr-server.service            # optional systemd unit (headless binary)
 ```
 
-Original backup source: `~/.config/alvr/session.json.bak-avp` (with fixes applied).
+### Recent server commits (branch `v20.14.1-appstore-stable`)
 
-Documented: 2026-07-08
+| Commit | Summary |
+|--------|---------|
+| `8c94dd18` | First-connect stability (defer LensDistortionChanged, presync) |
+| `07a733a6` | Linux audio routing to ALVR virtual sink |
+| `cf88690f` | Dashboard SteamVR supervisor + optional `alvr_server` binary |
+
+Documented: 2026-07-09
