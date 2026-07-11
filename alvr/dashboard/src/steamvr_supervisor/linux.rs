@@ -327,6 +327,15 @@ fn try_recover(backoff: &mut BackoffState, reason: &str) -> bool {
     }
 }
 
+fn stream_recovery_requested() -> Option<String> {
+    let path = runtime_dir().join("stream-recovery-request.json");
+    let text = fs::read_to_string(path).ok()?;
+    let _ = fs::remove_file(runtime_dir().join("stream-recovery-request.json"));
+    serde_json::from_str::<serde_json::Value>(&text)
+        .ok()
+        .and_then(|v| v.get("reason").and_then(|r| r.as_str()).map(|s| s.to_string()))
+}
+
 fn supervisor_loop() {
     let _ = fs::create_dir_all(runtime_dir());
     info!("SteamVR supervisor started (exponential backoff up to {}s)", MAX_BACKOFF.as_secs());
@@ -347,6 +356,13 @@ fn supervisor_loop() {
             backoff.reset();
             unhealthy_streak = 0;
             try_recover(&mut backoff, "manual restart");
+            continue;
+        }
+
+        if let Some(reason) = stream_recovery_requested() {
+            backoff.reset();
+            unhealthy_streak = 0;
+            try_recover(&mut backoff, &format!("stream recovery ({reason})"));
             continue;
         }
 

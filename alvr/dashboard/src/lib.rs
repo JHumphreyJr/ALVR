@@ -6,6 +6,8 @@ pub mod data_sources_wasm;
 pub mod dashboard;
 
 #[cfg(not(target_arch = "wasm32"))]
+pub mod server_daemon;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod logging_backend;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod steamvr_launcher;

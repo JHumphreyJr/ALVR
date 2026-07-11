@@ -1,4 +1,5 @@
 mod graphics;
+mod ipc_mode;
 mod props;
 mod tracking;
 
@@ -463,6 +464,15 @@ pub unsafe extern "C" fn HmdDriverFactory(
         };
 
         graphics::initialize_shaders();
+
+        let early_hmd_initialization = !dashboard_process_paths.is_empty();
+
+        if alvr_server_core::is_daemon_process_alive() {
+            alvr_common::info!("ALVR driver: attach mode (server daemon owns handshake)");
+            ipc_mode::install_ffi_callbacks();
+            ipc_mode::start_ipc_client(early_hmd_initialization);
+            return;
+        }
 
         unsafe {
             LogError = Some(alvr_server_core::alvr_error);

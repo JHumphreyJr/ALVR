@@ -1,15 +1,20 @@
 mod bitrate;
 mod c_api;
 mod connection;
+mod daemon;
+pub mod driver_ipc;
 mod hand_gestures;
 mod haptics;
 mod input_mapping;
 mod logging_backend;
 mod sockets;
 mod statistics;
+mod stream_health;
 mod tracking;
 mod web_server;
 
+pub use daemon::start_server_daemon;
+pub use driver_ipc::{is_daemon_process_alive, read_daemon_marker};
 pub use c_api::*;
 pub use logging_backend::init_logging;
 pub use tracking::HandType;
@@ -72,6 +77,7 @@ pub fn initialize_environment(layout: afs::Layout) {
 }
 
 // todo: use this as the network packet
+#[derive(Clone)]
 pub struct ViewsConfig {
     // transforms relative to the head
     pub local_view_transforms: [Pose; 2],
@@ -517,6 +523,38 @@ impl ServerCoreContext {
         self.is_restarting.set(true);
 
         // drop is called here for self
+    }
+
+    /// Tear down active streams so the client reconnects with fresh views (Phase 4).
+    pub fn request_stream_teardown(&self) {
+        use alvr_packets::ClientListAction;
+
+        {
+            let mut session = SESSION_MANAGER.write();
+            let hostnames: Vec<_> = session
+                .client_list()
+                .iter()
+                .filter(|(_, c)| c.connection_state == ConnectionState::Streaming)
+                .map(|(h, _)| h.clone())
+                .collect();
+            for hostname in hostnames {
+                session.update_client_list(
+                    hostname,
+                    ClientListAction::SetConnectionState(ConnectionState::Disconnecting),
+                );
+            }
+        }
+
+        *self.lifecycle_state.write() = LifecycleState::Idle;
+        thread::sleep(Duration::from_millis(200));
+        *self.lifecycle_state.write() = LifecycleState::Resumed;
+
+        if let Some(ipc) = driver_ipc::driver_ipc_server() {
+            ipc.send_event(driver_ipc::IpcServerEvent::ClientDisconnected);
+        }
+
+        stream_health::request_supervisor_recovery("compositor_lost");
+        warn!("Stream teardown requested — client should reconnect");
     }
 }
 

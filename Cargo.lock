@@ -287,6 +287,7 @@ dependencies = [
  "alvr_filesystem",
  "alvr_gui_common",
  "alvr_packets",
+ "alvr_server_core",
  "alvr_server_io",
  "alvr_session",
  "alvr_sockets",

@@ -852,6 +852,10 @@ fn connection_pipeline(
     }
     dbg_connection!("connection_pipeline: Got StreamReady packet");
 
+    if !crate::driver_ipc::ensure_driver_ready(Duration::from_secs(90)) {
+        warn!("OpenVR driver did not attach in time; continuing anyway");
+    }
+
     *ctx.statistics_manager.write() = Some(StatisticsManager::new(
         initial_settings.connection.statistics_history_size,
         Duration::from_secs_f32(1.0 / fps),

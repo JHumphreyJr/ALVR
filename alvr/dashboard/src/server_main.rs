@@ -10,6 +10,9 @@ fn main() {
 
     alvr_dashboard::data_sources::clean_session();
 
+    #[cfg(not(target_arch = "wasm32"))]
+    alvr_dashboard::server_daemon::start();
+
     #[cfg(target_os = "linux")]
     {
         alvr_dashboard::steamvr_supervisor::start_supervisor_thread();

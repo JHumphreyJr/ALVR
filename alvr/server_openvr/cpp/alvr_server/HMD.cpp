@@ -240,7 +240,10 @@ void Hmd::StartStreaming() {
     Debug("Hmd::StartStreaming");
 
 #ifndef _WIN32
-    m_deferLensDistortionChanged = true;
+    // Only defer the first LensDistortionChanged of a new encoder session (first connect).
+    if (!m_streamComponentsInitialized) {
+        m_deferLensDistortionChanged = true;
+    }
 #endif
 
     vr::VRDriverInput()->UpdateBooleanComponent(m_proximity, true, 0.0);
